@@ -123,8 +123,8 @@ async function main() {
     copyright: `© ${new Date().getFullYear()} Anysphere, Inc.`,
     updated: new Date(),
     feedLinks: {
-      rss: 'https://YOUR_USERNAME.github.io/cursor-blog-rss/rss.xml',
-      atom: 'https://YOUR_USERNAME.github.io/cursor-blog-rss/atom.xml'
+      rss: 'https://dasconnor.github.io/cursor-blog-rss/rss.xml',
+      atom: 'https://dasconnor.github.io/cursor-blog-rss/atom.xml'
     }
   });
 
