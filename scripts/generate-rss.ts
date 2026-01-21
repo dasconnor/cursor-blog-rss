@@ -25,35 +25,36 @@ function parseBlogPage(html: string): BlogPost[] {
   const $ = cheerio.load(html);
   const posts: BlogPost[] = [];
 
-  // Each blog post is an anchor with the post content inside
-  $('a[href^="/blog/"]').each((_, el) => {
+  const normalizeText = (text: string) => text.replace(/\s+/g, ' ').trim();
+
+  const addPost = (post: BlogPost) => {
+    if (!post.title || !post.link) return;
+    posts.push(post);
+  };
+
+  // The blog list is server-rendered as articles with a card link inside.
+  $('article a[href^="/blog/"]').each((_, el) => {
     const $el = $(el);
     const href = $el.attr('href');
-    
+
     // Skip navigation links and topic filters
-    if (!href || 
-        href === '/blog' || 
-        href.startsWith('/blog/topic') || 
-        href.startsWith('/blog/page')) {
+    if (
+      !href ||
+      href === '/blog' ||
+      href.startsWith('/blog/topic') ||
+      href.startsWith('/blog/page')
+    ) {
       return;
     }
 
-    const text = $el.text();
-    const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-    
-    if (lines.length < 2) return;
+    const title = normalizeText($el.find('p').first().text());
+    const description = normalizeText($el.find('p').eq(1).text());
+    const categoryText = normalizeText($el.find('span.capitalize').first().text());
+    const category = categoryText.replace(/\s*·\s*$/, '') || 'post';
+    const timeEl = $el.find('time').first();
+    const dateStr = timeEl.attr('dateTime') || normalizeText(timeEl.text());
 
-    // Parse the post structure: Title, Description, category · date
-    const title = lines[0];
-    const description = lines.length > 2 ? lines.slice(1, -1).join(' ') : '';
-    const metaLine = lines[lines.length - 1];
-    
-    // Extract category and date from "category · Mon DD, YYYY" format
-    const metaMatch = metaLine.match(/^(\w+)\s*·\s*(.+)$/);
-    const category = metaMatch?.[1] || 'post';
-    const dateStr = metaMatch?.[2] || '';
-
-    posts.push({
+    addPost({
       title,
       link: `${SITE_URL}${href}`,
       description,
@@ -61,6 +62,43 @@ function parseBlogPage(html: string): BlogPost[] {
       date: dateStr
     });
   });
+
+  // Fallback: try the old text parsing if we didn't find any articles.
+  if (posts.length === 0) {
+    $('a[href^="/blog/"]').each((_, el) => {
+      const $el = $(el);
+      const href = $el.attr('href');
+
+      if (
+        !href ||
+        href === '/blog' ||
+        href.startsWith('/blog/topic') ||
+        href.startsWith('/blog/page')
+      ) {
+        return;
+      }
+
+      const text = $el.text();
+      const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+
+      if (lines.length < 2) return;
+
+      const title = lines[0];
+      const description = lines.length > 2 ? lines.slice(1, -1).join(' ') : '';
+      const metaLine = lines[lines.length - 1];
+      const metaMatch = metaLine.match(/^(\w+)\s*·\s*(.+)$/);
+      const category = metaMatch?.[1] || 'post';
+      const dateStr = metaMatch?.[2] || '';
+
+      addPost({
+        title,
+        link: `${SITE_URL}${href}`,
+        description,
+        category,
+        date: dateStr
+      });
+    });
+  }
 
   return posts;
 }
@@ -74,7 +112,7 @@ function parseDate(dateStr: string): Date {
 async function fetchAllPosts(): Promise<BlogPost[]> {
   const allPosts: BlogPost[] = [];
   let page = 1;
-  const maxPages = 10; // Safety limit
+  const maxPages = 100; // Safety limit for full back-catalogue
 
   while (page <= maxPages) {
     const url = page === 1 ? BLOG_URL : `${BLOG_URL}/page/${page}`;
