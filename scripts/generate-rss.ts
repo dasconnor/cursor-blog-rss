@@ -37,6 +37,25 @@ function parseDate(dateStr: string): Date {
 
 const normalizeText = (text: string) => text.replace(/\s+/g, ' ').trim();
 
+/** Extract separated text segments from an element's children (leaf nodes).
+ *  Falls back to newline-splitting if no child structure is found. */
+function getChildTexts($: cheerio.CheerioAPI, $el: cheerio.Cheerio<cheerio.AnyNode>): string[] {
+  const texts: string[] = [];
+  $el.find('*').each((_, child) => {
+    const $child = $(child);
+    if ($child.children().length === 0) {
+      const t = $child.text().trim();
+      if (t) texts.push(t);
+    }
+  });
+  if (texts.length <= 1) {
+    const text = $el.text();
+    const byNewline = text.split('\n').map(l => l.trim()).filter(Boolean);
+    if (byNewline.length > texts.length) return byNewline;
+  }
+  return texts;
+}
+
 // ============ CURSOR BLOG PARSER ============
 function parseCursorBlog(html: string, siteUrl: string): BlogPost[] {
   const $ = cheerio.load(html);
@@ -162,8 +181,9 @@ function parseClaudeBlog(html: string, siteUrl: string): BlogPost[] {
     const $el = $(el);
     const href = $el.attr('href') || '';
     
-    // Skip if it's just the main blog link or already seen
+    // Skip nav links, category pages, and the main blog link
     if (href === '/blog' || href === '/blog/' || !href.includes('/blog/')) return;
+    if (href.includes('/blog/category/')) return;
     
     // Build full URL
     const fullUrl = href.startsWith('http') ? href : `${siteUrl}${href}`;
@@ -171,11 +191,10 @@ function parseClaudeBlog(html: string, siteUrl: string): BlogPost[] {
     // Skip duplicates
     if (seen.has(fullUrl)) return;
     
-    // Get text content
-    const text = $el.text();
-    const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+    // Extract separated text segments from child elements
+    const segments = getChildTexts($, $el);
     
-    if (lines.length === 0) return;
+    if (segments.length === 0) return;
 
     // Try to extract title - usually the most prominent text
     let title = '';
@@ -186,13 +205,13 @@ function parseClaudeBlog(html: string, siteUrl: string): BlogPost[] {
     const datePattern = /^(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4}$/i;
     const shortDatePattern = /^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},?\s+\d{4}$/i;
     
-    for (const line of lines) {
-      if (datePattern.test(line) || shortDatePattern.test(line)) {
-        dateStr = line;
-      } else if (!title && line.length > 10 && !line.includes('Read more')) {
-        title = line;
-      } else if (['Agents', 'Coding', 'Enterprise AI', 'Product announcements'].includes(line)) {
-        category = line;
+    for (const segment of segments) {
+      if (datePattern.test(segment) || shortDatePattern.test(segment)) {
+        dateStr = segment;
+      } else if (!title && segment.length > 10 && !segment.includes('Read more')) {
+        title = segment;
+      } else if (['Agents', 'Coding', 'Enterprise AI', 'Product announcements'].includes(segment)) {
+        category = segment;
       }
     }
 
@@ -245,23 +264,21 @@ function parseAnthropicEngineering(html: string, siteUrl: string): BlogPost[] {
     const fullUrl = href.startsWith('http') ? href : `${siteUrl}${href}`;
     if (seen.has(fullUrl)) return;
 
-    const text = $el.text();
-    const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+    const segments = getChildTexts($, $el);
     
-    if (lines.length === 0) return;
+    if (segments.length === 0) return;
 
     let title = '';
     let dateStr = '';
     
-    // Date patterns like "Nov 26, 2025" or "December 19, 2024"
     const datePattern = /^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},?\s+\d{4}$/i;
     const longDatePattern = /^(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4}$/i;
     
-    for (const line of lines) {
-      if (datePattern.test(line) || longDatePattern.test(line)) {
-        dateStr = line;
-      } else if (!title && line.length > 15) {
-        title = line;
+    for (const segment of segments) {
+      if (datePattern.test(segment) || longDatePattern.test(segment)) {
+        dateStr = segment;
+      } else if (!title && segment.length > 15) {
+        title = segment;
       }
     }
 
@@ -314,10 +331,9 @@ function parseAnthropicResearch(html: string, siteUrl: string): BlogPost[] {
     const fullUrl = href.startsWith('http') ? href : `${siteUrl}${href}`;
     if (seen.has(fullUrl)) return;
 
-    const text = $el.text();
-    const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+    const segments = getChildTexts($, $el);
     
-    if (lines.length === 0) return;
+    if (segments.length === 0) return;
 
     let title = '';
     let dateStr = '';
@@ -328,13 +344,13 @@ function parseAnthropicResearch(html: string, siteUrl: string): BlogPost[] {
     
     const categories = ['Interpretability', 'Alignment', 'Societal Impacts', 'Policy', 'Economic Research', 'Announcements'];
     
-    for (const line of lines) {
-      if (datePattern.test(line) || longDatePattern.test(line)) {
-        dateStr = line;
-      } else if (categories.includes(line)) {
-        category = line;
-      } else if (!title && line.length > 15) {
-        title = line;
+    for (const segment of segments) {
+      if (datePattern.test(segment) || longDatePattern.test(segment)) {
+        dateStr = segment;
+      } else if (categories.includes(segment)) {
+        category = segment;
+      } else if (!title && segment.length > 15) {
+        title = segment;
       }
     }
 
